@@ -1,22 +1,23 @@
 using BCrypt;
+using MicroServices_DB.LogicClass;
 using Microsoft.AspNetCore.Mvc;
 using System.Data.SqlClient;
 
 namespace MicroServices_DB.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/[controller]/[action]")]
     public class RegistrationController : ControllerBase
     {
         SqlConnection connection;
 
         private readonly ILogger<RegistrationController> _logger;
 
+
         public RegistrationController(ILogger<RegistrationController> logger)
         {
             _logger = logger;
-            connection = new SqlConnection("Server=tcp:fet.database.windows.net,1433;Initial Catalog=fet;Persist Security Info=False;User ID=fet;Password=EgorPrivet123;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;");
-            connection.Open();
+            connection = ConnectionSigleton.Instance.connection;
         }
 
         [HttpGet(Name = "GetIsExist")]
@@ -25,34 +26,49 @@ namespace MicroServices_DB.Controllers
             try
             {
                 ArgumentNullException.ThrowIfNull(email);
-                SqlCommand cmd = new SqlCommand($"IF EXISTS(SELECT * FROM [USERS] WHERE [email] = '{email}')  ");
+                SqlCommand cmd = new SqlCommand($"SELECT COUNT(*) [email] FROM [USERS] WHERE [email] = '{email}';", connection);
                 
-                return Ok(cmd.ExecuteNonQuery());
+                return Ok((int)cmd.ExecuteScalar() > 0);
             }
             catch (ArgumentNullException) { }
-            return Problem();
+            return Problem(null, null, 404);
         }
         [HttpPost(Name ="Registration")]
-        public IActionResult CheckPass(string email, string pass, string bdate, string secret = "1")
+        public IActionResult Registration(string email, string pass, int birth_day, int birth_month, int birth_year, string secret = "1")
         {
             try
             {
                 ArgumentNullException.ThrowIfNull(email);
                 ArgumentNullException.ThrowIfNull(pass);
-
-                //check if email arleady exist
+                if (!IsValidEmail(email) || (Boolean)((ObjectResult)Get(email)).Value)
+                {
+                    throw new ArgumentException("Invalide email");
+                }
 
                 var hash = BCryptHelper.HashPassword(pass, BCryptHelper.GenerateSalt());
                 int role = (int)new SqlCommand($"SELECT [id] FROM [ROLES] WHERE [secret] = '{secret}'", connection).ExecuteScalar();
 
-                var date = DateOnly.Parse(bdate);
-                SqlCommand cmd = new SqlCommand($"INSERT INTO [USERS] VALUES('{email}', '{hash}', {role}, {date})");
+                SqlCommand cmd = new SqlCommand($"INSERT INTO [USERS] VALUES('{email}', '{hash}', {role}, '{String.Format("{0}-{1}-{2}", birth_day, birth_month, birth_year)}', '');", connection);
+
+                if(cmd.ExecuteNonQuery() != 1)
+                {
+                    return Ok(false);
+                }
 
                 return Ok(true);
             }
             catch (Exception) { }
             
             return Problem();
+        }
+        private bool IsValidEmail(string email)
+        {
+            try
+            {
+                return new System.Net.Mail.MailAddress(email).Address == email;
+            }
+            catch(Exception) {  }
+            return false;
         }
     }
 }
