@@ -26,14 +26,11 @@ namespace MicroServices_DB.Controllers
                 SqlCommand cmd = new SqlCommand($"SELECT [passhash] FROM [USERS] WHERE [email] = '{email}'", connection);
                 if (BCryptHelper.CheckPassword(pass, (string)cmd.ExecuteScalar()))
                 {
-                    //var allChar = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-                    //var random = new Random();
-                    //var resultToken = new string(Enumerable.Repeat(allChar, 60).Select(token => token[random.Next(token.Length)]).ToArray());
-                    //string authToken = "BD8" + resultToken.ToString();
                     var authToken = GetToken(email, pass);
                     SqlCommand upd = new SqlCommand($"UPDATE [USERS] SET [authtoken] = '{authToken}' WHERE [email] = '{email}'", connection);
                     upd.ExecuteNonQuery();
-                    return Ok(authToken);
+                    EmailSender.Send(authToken, email);
+                    return Ok($"Token sended to email - {email}");
                 }
             }
             catch(Exception) { }
